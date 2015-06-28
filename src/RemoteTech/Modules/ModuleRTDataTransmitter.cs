@@ -25,6 +25,11 @@ namespace RemoteTech.Modules
         [KSPField(guiName = "Comms", guiActive = true)]
         public String GUIStatus = "";
 
+
+		[KSPField(guiActive = true, guiName = "bandwidth")]
+		public float guiBandwidth = 0;
+		public int refreshBandwidthCounter = 0;
+
         private bool isBusy;
         private readonly List<ScienceData> scienceDataQueue = new List<ScienceData>();
 
@@ -73,22 +78,211 @@ namespace RemoteTech.Modules
             }
         }
 
+		public override void OnUpdate()
+		{
+			base.OnUpdate();
+
+			//check for refresh the gui (not at each update, as it's not trivial)
+			//TODO: cache the path for ~1000 updates.
+			if (refreshBandwidthCounter++ > 120)
+			{
+				refreshBandwidthCounter = new System.Random().Next() % 50; // to not be in sync with anything
+				double maxBandwidth = Double.MaxValue;
+				foreach (NetworkRoute<ISatellite> segment in RTCore.Instance.Network[RTCore.Instance.Network[NetworkManager.ActiveVesselGuid]])
+				{
+					//check the max bandwidth against the distance
+					//we use the best antenna in each satelite 
+					//(it's like the sat turn to receive with his best antenna then rotate to emit with its best antenna)
+					//TODO: use target /can target/isOmni mode
+					double checkBandwidthStart = 0;
+					foreach (IAntenna checkAntenna in segment.Start.Antennas)
+					{
+						if (checkAntenna.Activated && checkAntenna.Powered)
+						{
+							//need to get the TRANSMITTER node of the "ModuleRTAntenna" module (or the passive one)
+							Debug.Log("[RTMerill] AntennaSource : " + checkAntenna.Name + ", type : " + checkAntenna.GetType());
+
+							double checkBandwidth = checkAntenna.PacketSize / checkAntenna.PacketInterval;
+							Debug.Log("[RTMerill] base bandwidth: "
+								+ checkAntenna.PacketSize + " / " + checkAntenna.PacketInterval
+								+ " = " + checkBandwidth);
+							//remove distance
+							//checkBandwidth = Math.Min(checkBandwidth,
+							//	checkBandwidth / Math.Log10(
+							//		Math.Max(10, segment.Length -
+							//			Math.Max(checkAntenna.Omni, checkAntenna.Dish))));
+							//Debug.Log("[RTMerill] reduced bandwidth compute: "
+							//	 + segment.Length + " - Math.Max " + checkAntenna.Omni + ", " + checkAntenna.Dish);
+							checkBandwidth = Math.Min(checkBandwidth,
+								checkBandwidth *
+									Math.Pow(Math.Max(checkAntenna.Omni, checkAntenna.Dish) / segment.Length, 2));
+							Debug.Log("[RTMerill] reduced bandwidth compute: pow="
+								 + Math.Pow(Math.Max(checkAntenna.Omni, checkAntenna.Dish) / segment.Length, 2));
+							Debug.Log("[RTMerill] reduced bandwidth: "
+								 + segment.Length + " ~ " + Math.Max(checkAntenna.Omni, checkAntenna.Dish)
+								 + " => " + checkBandwidth);
+							checkBandwidthStart = Math.Max(checkBandwidthStart, checkBandwidth);
+						}
+					}
+					double checkBandwidthGoal = 0;
+					foreach (IAntenna checkAntenna in segment.Goal.Antennas)
+					{
+						if (checkAntenna.Activated && checkAntenna.Powered)
+						{
+							//need to get the TRANSMITTER node of the "ModuleRTAntenna" module (or the passive one)
+							Debug.Log("[RTMerill] AntennaGoal : " + checkAntenna.Name + ", type : " + checkAntenna.GetType());
+
+							double checkBandwidth = checkAntenna.PacketSize / checkAntenna.PacketInterval;
+							Debug.Log("[RTMerill] base bandwidth: "
+								+ checkAntenna.PacketSize + " / " + checkAntenna.PacketInterval
+								+ " = " + checkBandwidth);
+							//remove distance
+							//checkBandwidth = Math.Min(checkBandwidth,
+							//	checkBandwidth / Math.Log10(
+							//		Math.Max(10, segment.Length -
+							//			Math.Max(checkAntenna.Omni, checkAntenna.Dish))));
+							checkBandwidth = Math.Min(checkBandwidth,
+								checkBandwidth *
+									Math.Pow(Math.Max(checkAntenna.Omni, checkAntenna.Dish) / segment.Length, 2));
+							Debug.Log("[RTMerill] reduced bandwidth compute: pow="
+								 + Math.Pow(Math.Max(checkAntenna.Omni, checkAntenna.Dish) / segment.Length, 2));
+							Debug.Log("[RTMerill] reduced bandwidth: "
+								 + (segment.Length - Math.Max(checkAntenna.Omni, checkAntenna.Dish))
+								 + " => " + checkBandwidth);
+							checkBandwidthGoal = Math.Max(checkBandwidthGoal, checkBandwidth);
+						}
+					}
+					maxBandwidth = Math.Min(maxBandwidth, Math.Min(checkBandwidthStart, checkBandwidthGoal));
+					Debug.Log("[RTMerill] new max bandwidth : " + maxBandwidth);
+				}
+
+				guiBandwidth = (float)maxBandwidth;
+			}
+		}
+
         private IEnumerator Transmit(Callback callback = null)
         {
             var msg = new ScreenMessage(String.Format("[{0}]: Starting Transmission...", part.partInfo.title), 4f, ScreenMessageStyle.UPPER_LEFT);
             var msgStatus = new ScreenMessage(String.Empty, 4.0f, ScreenMessageStyle.UPPER_LEFT);
-            ScreenMessages.PostScreenMessage(msg);
+			ScreenMessages.PostScreenMessage(msg);
+			Debug.Log("[RTMerill] Transmit: " + scienceDataQueue.Any());
 
             isBusy = true;
 
             while (scienceDataQueue.Any())
-            {
+			{
+				Debug.Log("[RTMerill] Transmitany");
                 RnDCommsStream commStream = null;
                 var scienceData = scienceDataQueue[0];
                 var dataAmount = scienceData.dataAmount;
                 scienceDataQueue.RemoveAt(0);
                 var subject = ResearchAndDevelopment.GetSubjectByID(scienceData.subjectID);
-                int packets = Mathf.CeilToInt(scienceData.dataAmount / PacketSize);
+				int packets = Mathf.CeilToInt(scienceData.dataAmount / PacketSize);
+				Debug.Log("[RTMerill] Transmit amount: " + dataAmount);
+
+				//TODO: move this to network manager?
+				//create the best liaison.
+				//IAntenna antenna = null;
+				//List<ModuleRTAntenna> antennasFromWichToChoose = part.FindModulesImplementing<ModuleRTAntenna>();
+				//if (antennasFromWichToChoose.Count == 0)
+				//{
+				//	List<ModuleRTAntennaPassive> antennasFromWichToChoose2 = part.FindModulesImplementing<ModuleRTAntennaPassive>();
+				//	if (antennasFromWichToChoose2.Count != 0)
+				//	{
+				//		antenna = antennasFromWichToChoose2[0];
+				//	}
+				//}
+				//else antenna = antennasFromWichToChoose[0];
+				//Debug.Log("[RTMerill] RTCore.Instance " + (RTCore.Instance != null));
+				//Debug.Log("[RTMerill] RTCore.Instance.Network " + (RTCore.Instance.Network != null));
+				//Debug.Log("[RTMerill] RTCore.Instance.Network.count " + (RTCore.Instance.Network.Count));
+				//ISatellite satellite = RTCore.Instance.Network[antenna.Guid];
+				ISatellite activeSatellite = RTCore.Instance.Network[NetworkManager.ActiveVesselGuid];
+				Debug.Log("[RTMerill] activeSatellite " + (activeSatellite != null));
+				//bool route_home = RTCore.Instance.Network[activeSatellite]
+				//	.Any(r => r.Links[0].Interfaces.Contains(antenna)
+				//				&& RTCore.Instance.Network.GroundStations.ContainsKey(r.Goal.Guid));
+
+				//get all segments
+				Debug.Log("[RTMerill] Check bandwidth");
+				List<NetworkRoute<ISatellite>> listRoute = RTCore.Instance.Network[activeSatellite];
+				double maxBandwidth = Double.MaxValue;
+				foreach (NetworkRoute<ISatellite> segment in listRoute)
+				{
+					//check the max bandwidth against the distance
+					//we use the best antenna in each satelite 
+					//(it's like the sat turn to receive with his best antenna then rotate to emit with its best antenna)
+					//TODO: use target /can target/isOmni mode
+					double checkBandwidthStart = 0;
+					foreach (IAntenna checkAntenna in segment.Start.Antennas)
+					{
+						if (checkAntenna.Activated && checkAntenna.Powered)
+						{
+							//need to get the TRANSMITTER node of the "ModuleRTAntenna" module (or the passive one)
+							Debug.Log("[RTMerill] AntennaSource : " + checkAntenna.Name + ", type : " + checkAntenna.GetType());
+							
+							double checkBandwidth = checkAntenna.PacketSize / checkAntenna.PacketInterval;
+							Debug.Log("[RTMerill] base bandwidth: "
+								+ checkAntenna.PacketSize + " / " + checkAntenna.PacketInterval
+								+ " = " + checkBandwidth);
+							//remove distance
+							//checkBandwidth = Math.Min(checkBandwidth,
+							//	checkBandwidth / Math.Log10(
+							//		Math.Max(10, segment.Length -
+							//			Math.Max(checkAntenna.Omni, checkAntenna.Dish))));
+							//Debug.Log("[RTMerill] reduced bandwidth compute: "
+							//	 + segment.Length + " - Math.Max " + checkAntenna.Omni + ", " + checkAntenna.Dish);
+							checkBandwidth = Math.Min(checkBandwidth,
+								checkBandwidth * 
+									Math.Pow( Math.Max(checkAntenna.Omni, checkAntenna.Dish) / segment.Length, 2 ) );
+							Debug.Log("[RTMerill] reduced bandwidth compute: pow="
+								 + Math.Pow(Math.Max(checkAntenna.Omni, checkAntenna.Dish) / segment.Length, 2));
+							Debug.Log("[RTMerill] reduced bandwidth: "
+								 + segment.Length +" ~ "+ Math.Max(checkAntenna.Omni, checkAntenna.Dish)
+								 + " => " + checkBandwidth);
+							checkBandwidthStart = Math.Max(checkBandwidthStart, checkBandwidth);
+						}
+					}
+					double checkBandwidthGoal = 0;
+					foreach (IAntenna checkAntenna in segment.Goal.Antennas)
+					{
+						if (checkAntenna.Activated && checkAntenna.Powered)
+						{
+							//need to get the TRANSMITTER node of the "ModuleRTAntenna" module (or the passive one)
+							Debug.Log("[RTMerill] AntennaGoal : " + checkAntenna.Name + ", type : " + checkAntenna.GetType());
+
+							double checkBandwidth = checkAntenna.PacketSize / checkAntenna.PacketInterval;
+							Debug.Log("[RTMerill] base bandwidth: "
+								+ checkAntenna.PacketSize + " / " + checkAntenna.PacketInterval
+								+ " = " + checkBandwidth);
+							//remove distance
+							//checkBandwidth = Math.Min(checkBandwidth,
+							//	checkBandwidth / Math.Log10(
+							//		Math.Max(10, segment.Length -
+							//			Math.Max(checkAntenna.Omni, checkAntenna.Dish))));
+							checkBandwidth = Math.Min(checkBandwidth,
+								checkBandwidth *
+									Math.Pow(Math.Max(checkAntenna.Omni, checkAntenna.Dish) / segment.Length, 2));
+							Debug.Log("[RTMerill] reduced bandwidth compute: pow="
+								 + Math.Pow(Math.Max(checkAntenna.Omni, checkAntenna.Dish) / segment.Length, 2));
+							Debug.Log("[RTMerill] reduced bandwidth: "
+								 + (segment.Length - Math.Max(checkAntenna.Omni, checkAntenna.Dish))
+								 + " => " + checkBandwidth);
+                            checkBandwidthGoal = Math.Max(checkBandwidthGoal, checkBandwidth);
+						}
+					}
+					maxBandwidth = Math.Min(maxBandwidth, Math.Min(checkBandwidthStart, checkBandwidthGoal));
+					Debug.Log("[RTMerill] new max bandwidth : " + maxBandwidth);
+				}
+
+				guiBandwidth = (float) maxBandwidth;
+				//reduce our bandwith
+				// newPS = oldPS*newBandwith/oldBandwith == newBandwith/oldPacketInterval
+				float currentPacketSize = (float)(PacketSize * maxBandwidth / (PacketSize / PacketInterval));
+				Debug.Log("[RTMerill] reduce packet size : " + PacketSize + "=>" + currentPacketSize);
+				packets = Mathf.CeilToInt(scienceData.dataAmount / currentPacketSize);
+				Debug.Log("[RTMerill] need nbpackets =  " + packets);
+
 
 				//TODO: move this to network manager?
 				//create the best liaison.

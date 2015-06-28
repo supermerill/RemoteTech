@@ -1,5 +1,6 @@
 ﻿using System;
 using RemoteTech.SimpleTypes;
+using UnityEngine;
 
 namespace RemoteTech.RangeModel
 {
@@ -9,6 +10,10 @@ namespace RemoteTech.RangeModel
         /// <returns>The maximum range at which the two satellites can communicate.</returns>
         private static double MaxDistance(double r1, double r2)
         {
+			Debug.Log("[RT] MAX Distance : " + r1 + " & " + r2
+				+ " => " + Math.Min(r1, r2) + " + " + Math.Sqrt(r1 * r2)
+				+ " = " + (Math.Min(r1, r2) + Math.Sqrt(r1 * r2))
+				+ " ; (r1 * r2=" + (r1 * r2));
             return Math.Min(r1, r2) + Math.Sqrt(r1 * r2);
         }
 

@@ -13,6 +13,9 @@ namespace RemoteTech.Modules
 		public float RTPacketSize { get; private set; }
 		public float RTPacketInterval { get; private set; }
 		public float RTPacketResourceCost { get; private set; }
+		public float PacketSize { get { return RTPacketSize; } }
+		public float PacketInterval { get { return RTPacketInterval; } }
+		public float PacketResourceCost { get { return RTPacketResourceCost; } }
 
         public bool CanTarget { get { return Dish != -1; } }
 

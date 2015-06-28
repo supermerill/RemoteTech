@@ -4,7 +4,7 @@ namespace RemoteTech.Modules
 {
     public sealed class MissionControlAntenna : IAntenna
     {
-        [Persistent] public float Omni = 75000000;
+        [Persistent] public float Omni = 75000000000000f;
         public ISatellite Parent { get; set; }
 
         float IAntenna.Omni { get { return Omni; } }
@@ -16,7 +16,11 @@ namespace RemoteTech.Modules
         bool IAntenna.CanTarget { get { return false; } }
         Guid IAntenna.Target { get { return Guid.Empty; } set { return; } }
         float IAntenna.Dish { get { return 0.0f; } }
-        double IAntenna.CosAngle { get { return 1.0; } }
+		double IAntenna.CosAngle { get { return 1.0; } }
+		public float PacketSize { get { return 1000.0f; } }
+		public float PacketInterval { get { return 0.1f; } }
+		public float PacketResourceCost { get { return 0.0f; } }
+
 
         public void OnConnectionRefresh() { }
 

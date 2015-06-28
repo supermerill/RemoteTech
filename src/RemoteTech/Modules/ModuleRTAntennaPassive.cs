@@ -28,6 +28,10 @@ namespace RemoteTech.Modules
         private float RangeMultiplier { get { return RTSettings.Instance.RangeMultiplier; } }
         private bool Unlocked { get { return ResearchAndDevelopment.GetTechnologyState(TechRequired) == RDTech.State.Available || TechRequired.Equals("None"); } }
 
+		public float PacketSize { get { return RTPacketSize; } }
+		public float PacketInterval { get { return RTPacketInterval; } }
+		public float PacketResourceCost { get { return RTPacketResourceCost; } }
+
         [KSPField]
         public bool
             ShowEditor_OmniRange = true,
@@ -67,7 +71,7 @@ namespace RemoteTech.Modules
         public float
             RTPacketInterval = 0.0f,
             RTPacketSize = 0.0f,
-            RTPacketResourceCost = 0.0f;
+			RTPacketResourceCost = 0.0f;
 
         public int[] mDeployFxModuleIndices, mProgressFxModuleIndices;
 //        private List<IScalarModule> mDeployFxModules = new List<IScalarModule>();

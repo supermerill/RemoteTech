@@ -14,9 +14,9 @@ namespace RemoteTech
         double CosAngle { get; }
 		float Omni { get; }
 		float Consumption { get; }
-		float RTPacketSize { get; }
-		float RTPacketInterval { get; }
-		float RTPacketResourceCost { get; }
+		float PacketSize { get; }
+		float PacketInterval { get; }
+		float PacketResourceCost { get; }
 
         void OnConnectionRefresh();
     }
