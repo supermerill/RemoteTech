@@ -3,6 +3,8 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using RemoteTech;
+using RemoteTech.SimpleTypes;
 
 namespace RemoteTech.Modules
 {
@@ -13,6 +15,9 @@ namespace RemoteTech.Modules
             PacketInterval = 0.5f,
             PacketSize = 1.0f,
             PacketResourceCost = 10f;
+
+		[KSPField]
+		public float signalWeaken;
 
         [KSPField]
         public String
@@ -84,6 +89,65 @@ namespace RemoteTech.Modules
                 scienceDataQueue.RemoveAt(0);
                 var subject = ResearchAndDevelopment.GetSubjectByID(scienceData.subjectID);
                 int packets = Mathf.CeilToInt(scienceData.dataAmount / PacketSize);
+
+				//TODO: move this to network manager?
+				//create the best liaison.
+				IAntenna antenna = null;
+				ISatellite satellite = RTCore.Instance.Network[antenna.Guid];
+				bool route_home = RTCore.Instance.Network[satellite]
+					.Any(r => r.Links[0].Interfaces.Contains(antenna)
+								&& RTCore.Instance.Network.GroundStations.ContainsKey(r.Goal.Guid));
+
+				//get all segments
+				List<NetworkRoute<ISatellite>> listRoute = RTCore.Instance.Network[satellite];
+				double maxBandwidth = 0;
+				foreach (NetworkRoute<ISatellite> segment in listRoute)
+				{
+					//check the max bandwidth against the distance
+					//we use the best antenna in each satelite 
+					//(it's like the sat turn to receive with his best antenna then rotate to emit with its best antenna)
+					//TODO: use target /can target/isOmni mode
+					double checkBandwidthStart = 0;
+					foreach (IAntenna checkAntenna in segment.Start.Antennas)
+					{
+						if (checkAntenna.Activated && checkAntenna.Powered)
+						{
+							//need to get the TRANSMITTER node of the "ModuleRTAntenna" module (or the passive one)
+							print("Antenna : type : " + checkAntenna.GetType());
+
+							double checkBandwidth = checkAntenna.RTPacketInterval * checkAntenna.RTPacketSize;
+							//remove distance
+							checkBandwidth = Math.Min(checkBandwidth,
+								checkBandwidth / Math.Log10(
+									Math.Max(10, segment.Length -
+										Math.Max(checkAntenna.Omni, checkAntenna.Dish))));
+							checkBandwidthStart = Math.Max(checkBandwidthStart, checkBandwidth);
+						}
+					}
+					double checkBandwidthGoal = 0;
+					foreach (IAntenna checkAntenna in segment.Goal.Antennas)
+					{
+						if (checkAntenna.Activated && checkAntenna.Powered)
+						{
+							//need to get the TRANSMITTER node of the "ModuleRTAntenna" module (or the passive one)
+							print("AntennaGoal : type : " + checkAntenna.GetType());
+
+							double checkBandwidth = checkAntenna.RTPacketInterval * checkAntenna.RTPacketSize;
+							//remove distance
+							checkBandwidth = Math.Min(checkBandwidth,
+								checkBandwidth / Math.Log10(
+									Math.Max(10, segment.Length -
+										Math.Max(checkAntenna.Omni, checkAntenna.Dish))));
+                            checkBandwidthGoal = Math.Max(checkBandwidthGoal, checkBandwidth);
+						}
+					}
+					maxBandwidth = Math.Min(maxBandwidth, Math.Min(checkBandwidthStart, checkBandwidthGoal));
+				}
+				//reduce our bandwith
+                // newPS = oldPS*newBandwith/oldBandwith == newBandwith/oldPacketInterval
+				float currentPacketSize = (float)(PacketSize * maxBandwidth / (PacketSize * PacketInterval));
+				packets = Mathf.CeilToInt(scienceData.dataAmount / currentPacketSize);
+
                 if (ResearchAndDevelopment.Instance != null)
                 {
                     // pre calculate the time interval - fix for x64 systems
@@ -98,6 +162,7 @@ namespace RemoteTech.Modules
                     commStream = new RnDCommsStream(subject, scienceData.dataAmount, x64PacketInterval,
                                             scienceData.transmitValue, ResearchAndDevelopment.Instance);
                 }
+
                 //StartCoroutine(SetFXModules_Coroutine(modules_progress, 0.0f));
                 float power = 0;
                 while (packets > 0)
@@ -105,7 +170,7 @@ namespace RemoteTech.Modules
                     power += part.RequestResource("ElectricCharge", PacketResourceCost - power);
                     if (power >= PacketResourceCost * 0.95)
                     {
-                        float frame = Math.Min(PacketSize, dataAmount);
+                        float frame = Math.Min(currentPacketSize, dataAmount);
                         power -= PacketResourceCost;
                         GUIStatus = "Uploading Data...";
                         dataAmount -= frame;
@@ -114,7 +179,7 @@ namespace RemoteTech.Modules
                         //StartCoroutine(SetFXModules_Coroutine(modules_progress, progress));
                         msgStatus.message = String.Format("[{0}]: Uploading Data... {1}", part.partInfo.title, progress.ToString("P0"));
                         RTLog.Notify("[Transmitter]: Uploading Data... ({0}) - {1} Mits/sec. Packets to go: {2} - Files to Go: {3}",
-                            scienceData.title, (PacketSize / PacketInterval).ToString("0.00"), packets, scienceDataQueue.Count);
+                            scienceData.title, (currentPacketSize / PacketInterval).ToString("0.00"), packets, scienceDataQueue.Count);
                         ScreenMessages.PostScreenMessage(msgStatus, true);
 
                         // if we've a defined callback parameter so skip to stream each packet

@@ -12,8 +12,11 @@ namespace RemoteTech
         Guid Target { get; set; }
         float Dish { get; }
         double CosAngle { get; }
-        float Omni { get; }
-        float Consumption { get; }
+		float Omni { get; }
+		float Consumption { get; }
+		float RTPacketSize { get; }
+		float RTPacketInterval { get; }
+		float RTPacketResourceCost { get; }
 
         void OnConnectionRefresh();
     }

@@ -24,6 +24,7 @@ namespace RemoteTech
         public Dictionary<String, Rect> savedWindowPositions = new Dictionary<String, Rect>();
         [Persistent] public float ConsumptionMultiplier = 1.0f;
         [Persistent] public float RangeMultiplier = 1.0f;
+        [Persistent] public float TransmitPacketReduced = 1.0f;
         [Persistent] public String ActiveVesselGuid = "35b89a0d664c43c6bec8d0840afc97b2";
         [Persistent] public float SpeedOfLight = 3e8f;
         [Persistent] public MapFilter MapFilter = MapFilter.Path | MapFilter.Omni | MapFilter.Dish;

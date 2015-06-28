@@ -9,7 +9,10 @@ namespace RemoteTech.Modules
         public Guid Guid { get; private set; }
         public bool Powered { get; private set; }
         public bool Activated { get; set; }
-        public float Consumption { get; private set; }
+		public float Consumption{ get; private set; }
+		public float RTPacketSize { get; private set; }
+		public float RTPacketInterval { get; private set; }
+		public float RTPacketResourceCost { get; private set; }
 
         public bool CanTarget { get { return Dish != -1; } }
 
@@ -52,6 +55,7 @@ namespace RemoteTech.Modules
             Guid = v.id;
             mProtoPart = p;
             mProtoModule = ppms;
+			getDataTransmitterParams(ppms);
             try
             {
                 mDishTarget = new Guid(n.GetValue("RTAntennaTarget"));
@@ -71,6 +75,28 @@ namespace RemoteTech.Modules
 
             RTLog.Notify(ToString());
         }
+
+		private void getDataTransmitterParams(ProtoPartModuleSnapshot mms)
+		{
+			if (mms.moduleValues.HasNode("TRANSMITTER"))
+			{
+				RTLog.Notify("ProtoAntenna: Found TRANSMITTER block.");
+				ConfigNode mTransmitterConfig = mms.moduleValues.GetNode("TRANSMITTER");
+
+				// workarround for ksp 1.0
+				if (mTransmitterConfig.HasValue("PacketInterval"))
+					RTPacketInterval = float.Parse(mTransmitterConfig.GetValue("PacketInterval"));
+				else RTPacketInterval = 0.0f;
+
+				if (mTransmitterConfig.HasValue("PacketSize"))
+					RTPacketSize = float.Parse(mTransmitterConfig.GetValue("PacketSize"));
+				else RTPacketSize = 0.0f;
+
+				if (mTransmitterConfig.HasValue("PacketResourceCost"))
+					RTPacketResourceCost = float.Parse(mTransmitterConfig.GetValue("PacketResourceCost"));
+				else RTPacketResourceCost = 0.0f;
+			}
+		}
 
         public ProtoAntenna(String name, Guid guid, float omni)
         {
